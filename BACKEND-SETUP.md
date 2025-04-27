@@ -947,177 +947,448 @@ async function migrateToSQLite() {
 migrateToSQLite();
 ```
 
-### Connecting Frontend to Backend
+## Frontend Integration Changes
 
-To connect your frontend React application to the SQLite backend, update the API utility:
+To ensure the frontend successfully connects to the backend, update the `src/api/index.ts` file:
 
-```javascript
-// No changes needed to src/api/index.ts - it's already set up to connect to the backend
-// Just make sure the backend server is running on http://localhost:3000
-```
+<lov-write file_path="src/api/index.ts">
+// API utilities for connecting to the SQLite backend
+const API_URL = 'http://localhost:3000/api';
 
-### Data Migration From LocalStorage to SQLite
+// Helper function for handling API errors
+const handleResponse = async (response: Response) => {
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || 'API request failed');
+  }
+  return response.json();
+};
 
-1. **Create Export Script** at `scripts/export_localStorage.js`:
-
-```javascript
-const fs = require('fs');
-const path = require('path');
-const prompt = require('prompt-sync')({ sigint: true });
-
-// Function to export localStorage data
-function exportLocalStorage() {
+// Wrapper for fetch with localStorage fallback
+const fetchWithFallback = async (url: string, options: RequestInit = {}) => {
   try {
-    console.log('This script will help you export localStorage data from your browser to a JSON file.');
-    console.log('\nInstructions:');
-    console.log('1. Open your browser and navigate to your application');
-    console.log('2. Open Developer Tools (F12 or right-click -> Inspect)');
-    console.log('3. Go to the Console tab');
-    console.log('4. Run this command: copy(JSON.stringify(localStorage))');
-    console.log('5. Paste the copied data below:');
-    
-    const data = prompt('\nPaste localStorage data: ');
-    
+    const response = await fetch(url, options);
+    return await handleResponse(response);
+  } catch (error) {
+    console.error(`API Error: ${error.message}. Falling back to localStorage.`);
+    // Return null to indicate backend failed - will trigger localStorage fallback
+    return null;
+  }
+};
+
+export const api = {
+  // User endpoints
+  login: async (username: string, password?: string) => {
     try {
-      const parsedData = JSON.parse(data);
+      const response = await fetch(`${API_URL}/users/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      return await handleResponse(response);
+    } catch (error) {
+      console.error('Login API Error:', error.message);
+      // Use localStorage fallback for login
+      const users = JSON.parse(localStorage.getItem('jd-users') || '[]');
+      const user = users.find((u: any) => u.username === username);
+      if (user) {
+        return user;
+      }
+      throw new Error('User not found');
+    }
+  },
+  
+  getUsers: async () => {
+    const result = await fetchWithFallback(`${API_URL}/users`);
+    if (result !== null) return result;
+    
+    // Fallback to localStorage
+    return JSON.parse(localStorage.getItem('jd-users') || '[]');
+  },
+  
+  // Department endpoints
+  getDepartments: async () => {
+    const result = await fetchWithFallback(`${API_URL}/departments`);
+    if (result !== null) return result;
+    
+    // Fallback to localStorage - use data/departments.ts as reference
+    return JSON.parse(localStorage.getItem('jd-departments') || '[]');
+  },
+  
+  // Request endpoints
+  getRequests: async () => {
+    const result = await fetchWithFallback(`${API_URL}/requests`);
+    if (result !== null) return result;
+    
+    // Fallback to localStorage
+    return JSON.parse(localStorage.getItem('jd-requests') || '[]');
+  },
+  
+  createRequest: async (requestData: any) => {
+    try {
+      const response = await fetch(`${API_URL}/requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestData)
+      });
       
-      // Create data directory if it doesn't exist
-      const dataDir = path.join(__dirname, '../data');
-      if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
+      return await handleResponse(response);
+    } catch (error) {
+      console.error('Create Request API Error:', error.message);
+      
+      // Fallback to localStorage
+      const existingRequests = JSON.parse(localStorage.getItem('jd-requests') || '[]');
+      const updatedRequests = [requestData, ...existingRequests];
+      localStorage.setItem('jd-requests', JSON.stringify(updatedRequests));
+      
+      return {
+        message: 'Request created successfully (localStorage fallback)',
+        requestId: requestData.id
+      };
+    }
+  },
+  
+  updateRequest: async (requestId: string, requestData: any) => {
+    try {
+      const response = await fetch(`${API_URL}/requests/${requestId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestData)
+      });
+      
+      return await handleResponse(response);
+    } catch (error) {
+      console.error('Update Request API Error:', error.message);
+      
+      // Fallback to localStorage
+      const existingRequests = JSON.parse(localStorage.getItem('jd-requests') || '[]');
+      const updatedRequests = existingRequests.map((req: any) => 
+        req.id === requestId ? { ...req, ...requestData } : req
+      );
+      localStorage.setItem('jd-requests', JSON.stringify(updatedRequests));
+      
+      return {
+        message: 'Request updated successfully (localStorage fallback)',
+        requestId
+      };
+    }
+  },
+  
+  deleteRequest: async (requestId: string) => {
+    try {
+      const response = await fetch(`${API_URL}/requests/${requestId}`, {
+        method: 'DELETE'
+      });
+      
+      return await handleResponse(response);
+    } catch (error) {
+      console.error('Delete Request API Error:', error.message);
+      
+      // Fallback to localStorage
+      const existingRequests = JSON.parse(localStorage.getItem('jd-requests') || '[]');
+      const updatedRequests = existingRequests.filter((req: any) => req.id !== requestId);
+      localStorage.setItem('jd-requests', JSON.stringify(updatedRequests));
+      
+      return {
+        message: 'Request deleted successfully (localStorage fallback)',
+        requestId
+      };
+    }
+  },
+  
+  acceptRequest: async (requestId: string, username: string) => {
+    try {
+      const response = await fetch(`${API_URL}/requests/${requestId}/accept`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username })
+      });
+      
+      return await handleResponse(response);
+    } catch (error) {
+      console.error('Accept Request API Error:', error.message);
+      
+      // Fallback to localStorage
+      const existingRequests = JSON.parse(localStorage.getItem('jd-requests') || '[]');
+      const request = existingRequests.find((req: any) => req.id === requestId);
+      
+      if (!request) {
+        throw new Error('Request not found');
       }
       
-      // Save to file
-      const outputFile = path.join(dataDir, 'localStorage_export.json');
-      fs.writeFileSync(outputFile, JSON.stringify(parsedData, null, 2));
+      // Parse acceptedBy or create new array
+      let acceptedBy = [];
+      try {
+        acceptedBy = Array.isArray(request.acceptedBy) ? request.acceptedBy : 
+                     (request.acceptedBy ? JSON.parse(request.acceptedBy) : []);
+      } catch (e) {
+        acceptedBy = [];
+      }
       
-      console.log(`\nData successfully exported to: ${outputFile}`);
-      console.log('You can now run the migration script to import this data into SQLite.');
-    } catch (parseError) {
-      console.error('Error parsing localStorage data:', parseError.message);
-      console.log('Make sure you copied the data correctly.');
+      if (!acceptedBy.includes(username)) {
+        acceptedBy.push(username);
+      }
+      
+      const usersAccepted = acceptedBy.length;
+      const usersNeeded = request.usersNeeded || 2;
+      const newStatus = (request.multiDepartment || request.type === 'project') && usersAccepted >= usersNeeded 
+        ? 'In Process' 
+        : request.status;
+      
+      const now = new Date().toISOString();
+      
+      // Update the request
+      const updatedRequests = existingRequests.map((req: any) => 
+        req.id === requestId 
+          ? { 
+              ...req, 
+              acceptedBy, 
+              usersAccepted, 
+              status: newStatus,
+              lastStatusUpdate: now,
+              lastStatusUpdateTime: new Date().toLocaleTimeString()
+            } 
+          : req
+      );
+      
+      localStorage.setItem('jd-requests', JSON.stringify(updatedRequests));
+      
+      return {
+        message: 'Request accepted successfully (localStorage fallback)',
+        usersAccepted,
+        usersNeeded,
+        status: newStatus
+      };
     }
-  } catch (error) {
-    console.error('Error exporting data:', error);
+  },
+  
+  completeRequest: async (requestId: string, username: string) => {
+    try {
+      const response = await fetch(`${API_URL}/requests/${requestId}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username })
+      });
+      
+      return await handleResponse(response);
+    } catch (error) {
+      console.error('Complete Request API Error:', error.message);
+      
+      // Fallback to localStorage
+      const existingRequests = JSON.parse(localStorage.getItem('jd-requests') || '[]');
+      const request = existingRequests.find((req: any) => req.id === requestId);
+      
+      if (!request) {
+        throw new Error('Request not found');
+      }
+      
+      // Initialize or get completedBy array
+      if (!request.completedBy) request.completedBy = [];
+      
+      if (!request.completedBy.includes(username)) {
+        request.completedBy.push(username);
+      }
+      
+      // Parse acceptedBy
+      let acceptedBy = [];
+      try {
+        acceptedBy = Array.isArray(request.acceptedBy) ? request.acceptedBy : 
+                     (request.acceptedBy ? JSON.parse(request.acceptedBy) : []);
+      } catch (e) {
+        acceptedBy = [];
+      }
+      
+      // Check if all participants have completed
+      if (
+        (request.multiDepartment || request.type === 'project') && 
+        request.completedBy.length >= acceptedBy.length && 
+        acceptedBy.length >= (request.usersNeeded || 2)
+      ) {
+        request.status = 'Completed';
+        request.lastStatusUpdate = new Date().toISOString();
+        request.lastStatusUpdateTime = new Date().toLocaleTimeString();
+      }
+      
+      // Update the request
+      const updatedRequests = existingRequests.map((req: any) => 
+        req.id === requestId ? request : req
+      );
+      
+      localStorage.setItem('jd-requests', JSON.stringify(updatedRequests));
+      
+      return {
+        message: 'Completion status updated (localStorage fallback)',
+        requestId,
+        completedParticipants: request.completedBy
+      };
+    }
+  },
+  
+  rejectRequest: async (requestId: string, username: string, reason?: string) => {
+    try {
+      const response = await fetch(`${API_URL}/requests/${requestId}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, reason })
+      });
+      
+      return await handleResponse(response);
+    } catch (error) {
+      console.error('Reject Request API Error:', error.message);
+      
+      // Fallback to localStorage
+      const existingRequests = JSON.parse(localStorage.getItem('jd-requests') || '[]');
+      const request = existingRequests.find((req: any) => req.id === requestId);
+      
+      if (!request) {
+        throw new Error('Request not found');
+      }
+      
+      const now = new Date();
+      const formattedDate = now.toLocaleDateString() + ' ' + now.toLocaleTimeString();
+      const rejectionId = Date.now().toString();
+      
+      // Initialize rejections array if needed
+      if (!request.rejections) request.rejections = [];
+      
+      // Add rejection
+      request.rejections.push({
+        id: rejectionId,
+        requestId: requestId,
+        username: username,
+        reason: reason || '',
+        date: formattedDate,
+        hidden: 0
+      });
+      
+      // Parse acceptedBy for multi-department/project requests
+      if (request.multiDepartment || request.type === 'project') {
+        let acceptedBy = [];
+        try {
+          acceptedBy = Array.isArray(request.acceptedBy) ? request.acceptedBy : 
+                     (request.acceptedBy ? JSON.parse(request.acceptedBy) : []);
+        } catch (e) {
+          acceptedBy = [];
+        }
+        
+        const updatedAcceptedBy = acceptedBy.filter((u: string) => u !== username);
+        
+        request.acceptedBy = updatedAcceptedBy;
+        request.usersAccepted = updatedAcceptedBy.length;
+        
+        // Status returns to Pending if participant count drops
+        request.status = updatedAcceptedBy.length < (request.usersNeeded || 2) ? 'Pending' : request.status;
+        
+        // Remove from completed if present
+        if (request.completedBy) {
+          request.completedBy = request.completedBy.filter((u: string) => u !== username);
+        }
+      } else {
+        // For single department requests, change status to Rejected
+        request.status = 'Rejected';
+        request.acceptedBy = [];
+        request.usersAccepted = 0;
+        request.statusChangedBy = username;
+      }
+      
+      request.lastStatusUpdate = now.toISOString();
+      request.lastStatusUpdateTime = now.toLocaleTimeString();
+      
+      // Update the request
+      const updatedRequests = existingRequests.map((req: any) => 
+        req.id === requestId ? request : req
+      );
+      
+      localStorage.setItem('jd-requests', JSON.stringify(updatedRequests));
+      
+      return {
+        message: 'Request rejected successfully (localStorage fallback)',
+        rejectionId
+      };
+    }
+  },
+  
+  checkExpiredRequests: async () => {
+    const result = await fetchWithFallback(`${API_URL}/requests/check-expiration`, {
+      method: 'POST'
+    });
+    
+    if (result !== null) return result;
+    
+    // Fallback to localStorage
+    // This is a simplified version of the expiration logic
+    const existingRequests = JSON.parse(localStorage.getItem('jd-requests') || '[]');
+    const now = new Date();
+    let expiredCount = 0;
+    let deletedCount = 0;
+    
+    const updatedRequests = existingRequests.filter((request: any) => {
+      // Check completed/rejected requests
+      if ((request.status === 'Completed' || request.status === 'Rejected') && request.lastStatusUpdate) {
+        const statusUpdateDate = new Date(request.lastStatusUpdate);
+        const oneDayLater = new Date(statusUpdateDate);
+        oneDayLater.setDate(oneDayLater.getDate() + 1);
+        
+        if (now > oneDayLater) {
+          if (!request.isExpired) {
+            expiredCount++;
+            request.isExpired = true;
+          } else {
+            deletedCount++;
+            return false; // Remove from array
+          }
+        }
+      }
+      
+      // Check pending requests
+      if (request.status === 'Pending' && request.createdAt) {
+        const createdDate = new Date(request.createdAt);
+        
+        if (request.type === 'request') {
+          const expiryDays = request.multiDepartment ? 45 : 30;
+          const expiryDate = new Date(createdDate);
+          expiryDate.setDate(expiryDate.getDate() + expiryDays);
+          
+          if (now > expiryDate) {
+            deletedCount++;
+            return false; // Remove from array
+          }
+        } else if (request.type === 'project') {
+          const archiveDays = 60;
+          const archiveDate = new Date(createdDate);
+          archiveDate.setDate(archiveDate.getDate() + archiveDays);
+          
+          if (now > archiveDate) {
+            // Mark project as archived instead of deleting
+            request.archived = true;
+            request.archivedAt = now.toISOString();
+          }
+          
+          // If already archived, check if it should be deleted
+          if (request.archived && request.archivedAt) {
+            const archiveDate = new Date(request.archivedAt);
+            const deleteDate = new Date(archiveDate);
+            deleteDate.setDate(deleteDate.getDate() + 7);
+            
+            if (now > deleteDate) {
+              deletedCount++;
+              return false; // Remove from array
+            }
+          }
+        }
+      }
+      
+      return true;
+    });
+    
+    localStorage.setItem('jd-requests', JSON.stringify(updatedRequests));
+    
+    return {
+      message: 'Expiration check completed (localStorage fallback)',
+      expiredCount,
+      deletedCount
+    };
   }
-}
+};
 
-exportLocalStorage();
-```
-
-### Project Requirements and Workflow
-
-The request and project lifecycle information from the original document remains unchanged:
-
-#### Request Types
-1. **Single Department Requests**
-   - Expiration: 30 days
-   - Status Notes: 
-     - If rejected or expired, users should submit a new request to restart.
-     - When rejected, status changes back to "Pending" from "In Process"
-     - When rejected, rejection reason is stored and sent to creator
-     - Rejection notes are displayed in the user's profile and can be cleared individually or all at once
-     - When rejecting a single request, users are prompted to provide an optional reason for the rejection
-
-2. **Multi-Department Requests**
-   - Expiration: 45 days
-   - Status Notes: 
-     - If rejected or expired, users should submit a new request to restart.
-     - When any participant rejects, the status changes back to "Pending" and that user is removed from participants
-     - When rejected, rejection reason is stored and sent to creator
-     - Request stays in "Pending" until at least 2 users accept
-     - If user count drops below 2, request returns to "Pending" status
-     - Rejection notes are displayed in the user's profile and can be cleared individually or all at once
-
-3. **Projects**
-   - Initial Period: 60 days
-   - Archival Period: 7 additional days after initial period
-   - Status Notes: 
-     - If rejected or expired, users should submit a new request to restart or contact the admin for further queries.
-     - Projects can be rejected by participants at any time
-     - When any participant rejects a project, they are removed from the participant list and status changes back to "Pending"
-     - Projects follow the same participant logic as multi-department requests
-     - Project stays in "Pending" until at least 2 users accept
-     - If user count drops below 2, project returns to "Pending" status
-     - When a user joins a project, status remains "Pending" until the minimum required users (2+) have accepted
-     - Rejection reasons are stored and sent to creator
-     - Rejection notes are displayed in the user's profile and can be cleared individually or all at once
-
-## How to Run the Backend
-
-1. **Install dependencies**:
-   ```bash
-   npm install express cors body-parser sqlite3 prompt-sync node-fetch
-   ```
-
-2. **Initialize the database**:
-   ```bash
-   mkdir -p ./data
-   node server/index.js
-   ```
-
-3. **Export localStorage data** (if migrating from existing app):
-   ```bash
-   node scripts/export_localStorage.js
-   ```
-
-4. **Migrate data to SQLite** (after exporting):
-   ```bash
-   node scripts/migrate_to_sqlite.js
-   ```
-
-5. **Run in development mode**:
-   ```bash
-   # Terminal 1 - Backend server
-   node server/index.js
-   
-   # Terminal 2 - Frontend development server
-   npm run dev
-   ```
-
-6. **Run in production mode**:
-   ```bash
-   # Build frontend
-   npm run build
-   
-   # Run backend (will serve frontend from dist folder)
-   NODE_ENV=production node server/index.js
-   ```
-
-## Database Structure
-
-### Request/Project Storage
-- SQLite database is stored in the project's data directory at `./data/jd-requests.db`
-- Access using any SQLite client like DB Browser for SQLite or SQLiteStudio
-- Main tables include:
-  - requests: Stores all request and project information
-  - rejections: Stores rejection reasons and metadata
-  - users: Stores user information and roles
-  - departments: Stores department information
-  - participants_completed: Tracks which users have marked requests as completed
-
-### Local Database Access
-
-#### SQLite Database Location
-The SQLite database file is located at `./data/jd-requests.db` in the project root directory.
-
-#### How to View the Database
-1. Download and install a SQLite browser like "DB Browser for SQLite" (https://sqlitebrowser.org/)
-2. Open the application and select "Open Database"
-3. Navigate to your project directory and select the `./data/jd-requests.db` file
-4. You can now browse tables, run queries, and examine the data structure
-
-#### Alternative Using SQLite CLI
-1. Install SQLite command-line tool if not already installed
-2. Open a terminal in your project directory
-3. Run `sqlite3 ./data/jd-requests.db`
-4. Use SQLite commands like `.tables` to see available tables, and SQL queries to examine data
-
-## Import Sample Data
-
-To import the sample Excel data, use the provided Python script:
-
-```bash
-pip install openpyxl
-python scripts/import_excel_data.py public/sample-data.xlsx
-```
+export default api;
