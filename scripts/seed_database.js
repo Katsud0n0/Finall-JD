@@ -3,11 +3,7 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 
-// Import sample data
-const { departments } = require('../src/data/departments');
-const { teamMembers } = require('../src/data/team');
-
-// Connect to the SQLite database
+// Connect to database
 const dbPath = path.resolve(__dirname, '../data/jd-requests.db');
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
@@ -19,255 +15,271 @@ const db = new sqlite3.Database(dbPath, (err) => {
   }
 });
 
-// Seed the database with initial data
+// Sample data for seeding
+const departments = [
+  {
+    id: uuidv4(),
+    name: "Engineering",
+    icon: "code",
+    color: "#3b82f6"
+  },
+  {
+    id: uuidv4(),
+    name: "Marketing",
+    icon: "megaphone",
+    color: "#10b981"
+  },
+  {
+    id: uuidv4(),
+    name: "Product",
+    icon: "box",
+    color: "#6366f1"
+  },
+  {
+    id: uuidv4(),
+    name: "Design",
+    icon: "palette",
+    color: "#ec4899"
+  },
+  {
+    id: uuidv4(),
+    name: "HR",
+    icon: "users",
+    color: "#f59e0b"
+  }
+];
+
+const users = [
+  {
+    id: uuidv4(),
+    username: "john.doe",
+    fullName: "John Doe",
+    email: "john.doe@example.com",
+    department: "Engineering",
+    role: "admin",
+    phone: "555-123-4567"
+  },
+  {
+    id: uuidv4(),
+    username: "jane.smith",
+    fullName: "Jane Smith",
+    email: "jane.smith@example.com",
+    department: "Marketing",
+    role: "user",
+    phone: "555-987-6543"
+  },
+  {
+    id: uuidv4(),
+    username: "alex.wong",
+    fullName: "Alex Wong",
+    email: "alex.wong@example.com",
+    department: "Product",
+    role: "user",
+    phone: "555-456-7890"
+  },
+  {
+    id: uuidv4(),
+    username: "sarah.miller",
+    fullName: "Sarah Miller",
+    email: "sarah.miller@example.com",
+    department: "Design",
+    role: "user",
+    phone: "555-789-0123"
+  },
+  {
+    id: uuidv4(),
+    username: "admin",
+    fullName: "Admin User",
+    email: "admin@example.com",
+    department: "HR",
+    role: "admin",
+    phone: "555-234-5678"
+  }
+];
+
+const requests = [
+  {
+    id: uuidv4(),
+    title: "Website Redesign",
+    description: "Need help redesigning the company website for better user experience.",
+    department: "Marketing",
+    departments: JSON.stringify(["Design", "Engineering"]),
+    status: "Pending",
+    dateCreated: new Date().toISOString(),
+    creator: "jane.smith",
+    creatorDepartment: "Marketing",
+    createdAt: new Date().toISOString(),
+    type: "project",
+    creatorRole: "user",
+    multiDepartment: 1,
+    usersNeeded: 3,
+    acceptedBy: JSON.stringify(["jane.smith"])
+  },
+  {
+    id: uuidv4(),
+    title: "Bug Fix in Checkout Process",
+    description: "There's a critical bug in the checkout process that needs immediate attention.",
+    department: "Engineering",
+    status: "In Process",
+    dateCreated: new Date().toISOString(),
+    creator: "john.doe",
+    creatorDepartment: "Engineering",
+    createdAt: new Date().toISOString(),
+    type: "request",
+    creatorRole: "admin",
+    acceptedBy: JSON.stringify(["john.doe"]),
+    lastStatusUpdate: new Date().toISOString(),
+    lastStatusUpdateTime: new Date().toLocaleTimeString()
+  },
+  {
+    id: uuidv4(),
+    title: "Marketing Campaign Design",
+    description: "Need design assets for the upcoming winter marketing campaign.",
+    department: "Marketing",
+    departments: JSON.stringify(["Design", "Marketing"]),
+    status: "Completed",
+    dateCreated: new Date().toISOString(),
+    creator: "jane.smith",
+    creatorDepartment: "Marketing",
+    createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days ago
+    type: "request",
+    creatorRole: "user",
+    multiDepartment: 1,
+    acceptedBy: JSON.stringify(["sarah.miller", "jane.smith"]),
+    lastStatusUpdate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString() // 2 days ago
+  },
+  {
+    id: uuidv4(),
+    title: "Product Roadmap Review",
+    description: "Need to review the Q4 product roadmap with key stakeholders.",
+    department: "Product",
+    status: "Rejected",
+    dateCreated: new Date().toISOString(),
+    creator: "alex.wong",
+    creatorDepartment: "Product",
+    createdAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(), // 14 days ago
+    type: "request",
+    creatorRole: "user",
+    lastStatusUpdate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString() // 10 days ago
+  },
+  {
+    id: uuidv4(),
+    title: "Team Building Event",
+    description: "Organizing a team building event for all departments.",
+    department: "HR",
+    departments: JSON.stringify(["HR", "Engineering", "Marketing", "Product", "Design"]),
+    status: "Pending",
+    dateCreated: new Date().toISOString(),
+    creator: "admin",
+    creatorDepartment: "HR",
+    createdAt: new Date().toISOString(),
+    type: "project",
+    creatorRole: "admin",
+    multiDepartment: 1,
+    usersNeeded: 5,
+    acceptedBy: JSON.stringify(["admin"])
+  }
+];
+
+// Function to seed the database
 async function seedDatabase() {
+  console.log("Starting database seeding...");
+  
   try {
-    console.log('Starting database seeding process...');
+    // Clear existing data
+    await executeQuery("DELETE FROM participants_completed");
+    await executeQuery("DELETE FROM rejections");
+    await executeQuery("DELETE FROM requests");
+    await executeQuery("DELETE FROM users");
+    await executeQuery("DELETE FROM departments");
     
-    // Seed departments
-    await seedDepartments();
+    console.log("Cleared existing data");
     
-    // Seed users
-    await seedUsers();
+    // Insert new departments
+    for (const dept of departments) {
+      await executeQuery(
+        "INSERT INTO departments (id, name, icon, color) VALUES (?, ?, ?, ?)",
+        [dept.id, dept.name, dept.icon, dept.color]
+      );
+    }
+    console.log(`Inserted ${departments.length} departments`);
     
-    // Seed sample requests
-    await seedRequests();
+    // Insert new users
+    for (const user of users) {
+      await executeQuery(
+        "INSERT INTO users (id, username, fullName, email, department, role, phone) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [user.id, user.username, user.fullName, user.email, user.department, user.role, user.phone]
+      );
+    }
+    console.log(`Inserted ${users.length} users`);
     
-    console.log('Database seeding completed successfully!');
-    db.close();
+    // Insert new requests
+    for (const req of requests) {
+      await executeQuery(
+        `INSERT INTO requests (
+          id, title, description, department, departments, status, 
+          dateCreated, creator, creatorDepartment, createdAt, type, 
+          creatorRole, multiDepartment, usersNeeded, acceptedBy,
+          lastStatusUpdate, lastStatusUpdateTime
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          req.id, req.title, req.description, req.department, req.departments,
+          req.status, req.dateCreated, req.creator, req.creatorDepartment,
+          req.createdAt, req.type, req.creatorRole, req.multiDepartment || 0,
+          req.usersNeeded || 2, req.acceptedBy, req.lastStatusUpdate || null,
+          req.lastStatusUpdateTime || null
+        ]
+      );
+      
+      // Add a rejection for rejected requests
+      if (req.status === "Rejected") {
+        await executeQuery(
+          "INSERT INTO rejections (id, requestId, username, reason, date) VALUES (?, ?, ?, ?, ?)",
+          [
+            uuidv4(), 
+            req.id, 
+            "john.doe", 
+            "This request doesn't align with our current priorities.",
+            new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toLocaleString()
+          ]
+        );
+      }
+      
+      // Add completed participants for completed requests
+      if (req.status === "Completed") {
+        const acceptedBy = JSON.parse(req.acceptedBy);
+        for (const user of acceptedBy) {
+          await executeQuery(
+            "INSERT INTO participants_completed (id, requestId, username, completedAt) VALUES (?, ?, ?, ?)",
+            [
+              uuidv4(),
+              req.id,
+              user,
+              new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
+            ]
+          );
+        }
+      }
+    }
+    console.log(`Inserted ${requests.length} requests`);
+    
+    console.log("Database seeded successfully!");
+    
   } catch (error) {
-    console.error('Error seeding database:', error);
+    console.error("Error seeding database:", error);
+  } finally {
     db.close();
   }
 }
 
-// Import departments from the frontend data file
-async function seedDepartments() {
+// Helper function for executing queries
+function executeQuery(sql, params = []) {
   return new Promise((resolve, reject) => {
-    console.log('Seeding departments table...');
-    
-    // First check if departments already exist
-    db.get('SELECT COUNT(*) as count FROM departments', [], (err, row) => {
-      if (err) {
-        return reject(err);
-      }
-      
-      if (row.count > 0) {
-        console.log(`${row.count} departments already exist. Skipping.`);
-        return resolve();
-      }
-      
-      // Begin transaction
-      db.serialize(() => {
-        db.run('BEGIN TRANSACTION');
-        
-        const stmt = db.prepare(`
-          INSERT INTO departments (id, name, icon, color)
-          VALUES (?, ?, ?, ?)
-        `);
-        
-        departments.forEach(dept => {
-          stmt.run(dept.id, dept.name, dept.icon, dept.color);
-        });
-        
-        stmt.finalize();
-        
-        db.run('COMMIT', err => {
-          if (err) {
-            console.error('Error committing department data:', err);
-            db.run('ROLLBACK');
-            return reject(err);
-          }
-          console.log(`${departments.length} departments added successfully.`);
-          resolve();
-        });
-      });
+    db.run(sql, params, function(err) {
+      if (err) reject(err);
+      else resolve(this);
     });
   });
 }
 
-// Import users from the frontend data file
-async function seedUsers() {
-  return new Promise((resolve, reject) => {
-    console.log('Seeding users table...');
-    
-    // First check if users already exist
-    db.get('SELECT COUNT(*) as count FROM users', [], (err, row) => {
-      if (err) {
-        return reject(err);
-      }
-      
-      if (row.count > 0) {
-        console.log(`${row.count} users already exist. Skipping.`);
-        return resolve();
-      }
-      
-      // Begin transaction
-      db.serialize(() => {
-        db.run('BEGIN TRANSACTION');
-        
-        const stmt = db.prepare(`
-          INSERT INTO users (id, username, fullName, email, department, role, phone, password)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-        
-        teamMembers.forEach(user => {
-          const id = uuidv4();
-          const username = user.username || user.email.split('@')[0];
-          stmt.run(
-            id, 
-            username, 
-            user.name, 
-            user.email, 
-            user.department, 
-            user.role.toLowerCase(), 
-            user.phone || '', 
-            'password123' // Default password
-          );
-        });
-        
-        stmt.finalize();
-        
-        db.run('COMMIT', err => {
-          if (err) {
-            console.error('Error committing user data:', err);
-            db.run('ROLLBACK');
-            return reject(err);
-          }
-          console.log(`${teamMembers.length} users added successfully.`);
-          resolve();
-        });
-      });
-    });
-  });
-}
-
-// Create sample requests
-async function seedRequests() {
-  return new Promise((resolve, reject) => {
-    console.log('Seeding sample requests...');
-    
-    // First check if requests already exist
-    db.get('SELECT COUNT(*) as count FROM requests', [], (err, row) => {
-      if (err) {
-        return reject(err);
-      }
-      
-      if (row.count > 0) {
-        console.log(`${row.count} requests already exist. Skipping.`);
-        return resolve();
-      }
-      
-      // Get all users
-      db.all('SELECT username, department, role FROM users', [], (err, users) => {
-        if (err) {
-          return reject(err);
-        }
-        
-        if (users.length === 0) {
-          console.log('No users found. Skipping request creation.');
-          return resolve();
-        }
-        
-        // Filter users by role
-        const admins = users.filter(user => user.role === 'admin' || user.role.includes('head'));
-        const clients = users.filter(user => user.role === 'client' || user.role === 'staff');
-        
-        // Begin transaction
-        db.serialize(() => {
-          db.run('BEGIN TRANSACTION');
-          
-          // Create sample requests
-          const sampleRequests = [
-            {
-              id: `#${Math.floor(100000 + Math.random() * 900000)}`,
-              title: 'Website Update Request',
-              description: 'Need to update our department website with new content and images.',
-              status: 'Pending',
-              creator: clients[0]?.username || users[0].username,
-              creatorDepartment: clients[0]?.department || users[0].department,
-              department: 'IT',
-              multiDepartment: 0,
-              type: 'request'
-            },
-            {
-              id: `#${Math.floor(100000 + Math.random() * 900000)}`,
-              title: 'Equipment Maintenance',
-              description: 'The printer on the 3rd floor needs maintenance.',
-              status: 'In Process',
-              creator: clients[1]?.username || users[0].username,
-              creatorDepartment: clients[1]?.department || users[0].department,
-              department: 'Facilities',
-              multiDepartment: 0,
-              type: 'request'
-            },
-            {
-              id: `#${Math.floor(100000 + Math.random() * 900000)}`,
-              title: 'Annual Report Collaboration',
-              description: 'Need multiple departments to collaborate on the annual report.',
-              status: 'Pending',
-              creator: admins[0]?.username || users[0].username,
-              creatorDepartment: admins[0]?.department || users[0].department,
-              department: 'Marketing',
-              departments: JSON.stringify(['Marketing', 'Finance', 'HR']),
-              multiDepartment: 1,
-              type: 'project',
-              usersNeeded: 3
-            },
-            {
-              id: `#${Math.floor(100000 + Math.random() * 900000)}`,
-              title: 'Training Session Request',
-              description: 'Request for a training session on the new software.',
-              status: 'Completed',
-              creator: clients[2]?.username || users[0].username,
-              creatorDepartment: clients[2]?.department || users[0].department,
-              department: 'HR',
-              multiDepartment: 0,
-              type: 'request'
-            }
-          ];
-          
-          const now = new Date();
-          const stmt = db.prepare(`
-            INSERT INTO requests (
-              id, title, description, department, departments, status, dateCreated,
-              creator, creatorDepartment, createdAt, type, creatorRole, 
-              multiDepartment, usersNeeded
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `);
-          
-          sampleRequests.forEach(req => {
-            stmt.run(
-              req.id,
-              req.title,
-              req.description,
-              req.department,
-              req.departments || null,
-              req.status,
-              now.toLocaleDateString('en-GB'),
-              req.creator,
-              req.creatorDepartment,
-              now.toISOString(),
-              req.type,
-              req.creator === admins[0]?.username ? 'admin' : 'client',
-              req.multiDepartment,
-              req.usersNeeded || 1
-            );
-          });
-          
-          stmt.finalize();
-          
-          db.run('COMMIT', err => {
-            if (err) {
-              console.error('Error committing request data:', err);
-              db.run('ROLLBACK');
-              return reject(err);
-            }
-            console.log(`${sampleRequests.length} sample requests added successfully.`);
-            resolve();
-          });
-        });
-      });
-    });
-  });
-}
+module.exports = seedDatabase;
